@@ -1,44 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, View, Text, TextInput, Button, FlatList, StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView, Text, StyleSheet, ScrollView, View } from 'react-native';
 import axios from 'axios';
+import { TamaguiProvider, YStack } from 'tamagui';
+import config from './tamagui.config';
+import { WeightEntry } from './src/components/WeightEntry';
+import { MealEntry } from './src/components/MealEntry';
+import { MealList } from './src/components/MealList';
+import { MealEntry as MealEntryType, MealResponse, WeightEntry as WeightEntryType, DailyTotals } from './src/types';
 
-const BASE_URL = 'http://192.168.1.79:8080'; // Change to your LAN IP if testing on a device
-
-// Types
-type MealEntry = {
-  name: string;
-  protein: number;
-  carbs: number;
-  fat: number;
-  calories: number;
-  servings: number;
-};
-
-type MealResponse = {
-  meals: MealEntry[];
-  total_protein: number;
-  total_carbs: number;
-  total_fat: number;
-  total_calories: number;
-};
+const BASE_URL = 'http://192.168.1.201:8080';
 
 export default function App() {
-  // Weight
-  const [weight, setWeight] = useState<string>('');
-  const [weightStatus, setWeightStatus] = useState<string>('');
-
-  // Meal
-  const [mealName, setMealName] = useState<string>('');
-  const [protein, setProtein] = useState<string>('');
-  const [carbs, setCarbs] = useState<string>('');
-  const [fat, setFat] = useState<string>('');
-  const [calories, setCalories] = useState<string>('');
-  const [servings, setServings] = useState<string>('');
-  const [mealStatus, setMealStatus] = useState<string>('');
-
-  // Meals/totals
-  const [meals, setMeals] = useState<MealEntry[]>([]);
-  const [totals, setTotals] = useState<{ protein: number; carbs: number; fat: number; calories: number }>({
+  const [todayWeight, setTodayWeight] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [meals, setMeals] = useState<MealEntryType[]>([]);
+  const [totals, setTotals] = useState<DailyTotals>({
     protein: 0,
     carbs: 0,
     fat: 0,
@@ -46,8 +22,23 @@ export default function App() {
   });
 
   useEffect(() => {
+    checkTodayWeight();
     fetchTodayMeals();
   }, []);
+
+  const checkTodayWeight = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await axios.get<WeightEntryType>(`${BASE_URL}/weight/today`);
+      if (res.data && res.data.date === today) {
+        setTodayWeight(res.data.weight);
+      }
+    } catch (err) {
+      // If no weight entry found, that's fine - we'll show the weight entry screen
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchTodayMeals = async () => {
     try {
@@ -65,124 +56,78 @@ export default function App() {
     }
   };
 
-  const submitWeight = async () => {
-    const w = parseFloat(weight);
-    if (isNaN(w)) {
-      setWeightStatus('Please enter a valid weight.');
-      return;
-    }
-    try {
-      await axios.post(`${BASE_URL}/weight`, { weight: w });
-      setWeightStatus('Weight submitted!');
-      setWeight('');
-    } catch (err) {
-      setWeightStatus('Failed to submit weight.');
-    }
+  const handleWeightSubmit = async (weight: number) => {
+    await axios.post(`${BASE_URL}/weight`, { weight });
+    setTodayWeight(weight);
   };
 
-  const submitMeal = async () => {
-    if (
-      !mealName ||
-      isNaN(parseFloat(protein)) ||
-      isNaN(parseFloat(carbs)) ||
-      isNaN(parseFloat(fat)) ||
-      isNaN(parseFloat(calories)) ||
-      isNaN(parseFloat(servings))
-    ) {
-      setMealStatus('Please fill all fields with valid numbers.');
-      return;
-    }
-    const meal = {
-      name: mealName,
-      protein_per_serving: parseFloat(protein),
-      carbs_per_serving: parseFloat(carbs),
-      fat_per_serving: parseFloat(fat),
-      calories_per_serving: parseFloat(calories),
-      servings: parseFloat(servings),
-    };
-    try {
-      await axios.post(`${BASE_URL}/meals`, meal);
-      setMealStatus('Meal logged!');
-      setMealName('');
-      setProtein('');
-      setCarbs('');
-      setFat('');
-      setCalories('');
-      setServings('');
-      fetchTodayMeals();
-    } catch (err) {
-      setMealStatus('Failed to log meal.');
-    }
+  const handleMealSubmit = async (meal: MealEntryType) => {
+    await axios.post(`${BASE_URL}/meals`, {
+      name: meal.name,
+      protein_per_serving: meal.protein,
+      carbs_per_serving: meal.carbs,
+      fat_per_serving: meal.fat,
+      calories_per_serving: meal.calories,
+      servings: meal.servings,
+    });
+    fetchTodayMeals();
   };
+
+  if (isLoading) {
+    return (
+      <TamaguiProvider config={config}>
+        <SafeAreaView style={styles.container}>
+          <Text>Loading...</Text>
+        </SafeAreaView>
+      </TamaguiProvider>
+    );
+  }
+
+  if (!todayWeight) {
+    return <WeightEntry onSubmit={handleWeightSubmit} />;
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView>
-        {/* Weight entry */}
-        <Text style={styles.sectionTitle}>Enter Today's Weight</Text>
-        <View style={styles.row}>
-          <TextInput
-            style={styles.input}
-            placeholder="Weight"
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="numeric"
-          />
-          <Button title="Submit" onPress={submitWeight} />
-        </View>
-        <Text style={styles.status}>{weightStatus}</Text>
+    <TamaguiProvider config={config}>
+      <SafeAreaView style={styles.container}>
+        <ScrollView>
+          {/* Today's Weight Display */}
+          <YStack space="$2" padding="$4" backgroundColor="$background">
+            <Text style={styles.sectionTitle}>Today's Weight</Text>
+            <Text style={styles.weightDisplay}>{todayWeight} lbs</Text>
+          </YStack>
 
-        <View style={styles.divider} />
+          <View style={styles.divider} />
 
-        {/* Meal entry */}
-        <Text style={styles.sectionTitle}>Log a Meal</Text>
-        <TextInput style={styles.input} placeholder="Meal Name" value={mealName} onChangeText={setMealName} />
-        <TextInput style={styles.input} placeholder="Protein per Serving" value={protein} onChangeText={setProtein} keyboardType="numeric" />
-        <TextInput style={styles.input} placeholder="Carbs per Serving" value={carbs} onChangeText={setCarbs} keyboardType="numeric" />
-        <TextInput style={styles.input} placeholder="Fat per Serving" value={fat} onChangeText={setFat} keyboardType="numeric" />
-        <TextInput style={styles.input} placeholder="Calories per Serving" value={calories} onChangeText={setCalories} keyboardType="numeric" />
-        <TextInput style={styles.input} placeholder="Servings" value={servings} onChangeText={setServings} keyboardType="numeric" />
-        <Button title="Add Meal" onPress={submitMeal} />
-        <Text style={styles.status}>{mealStatus}</Text>
+          {/* Meal Entry Form */}
+          <MealEntry onSubmit={handleMealSubmit} />
 
-        <View style={styles.divider} />
+          <View style={styles.divider} />
 
-        {/* Meals today */}
-        <Text style={styles.sectionTitle}>Today's Meals</Text>
-        {meals.length === 0 ? (
-          <Text style={{ color: 'gray' }}>No meals logged today.</Text>
-        ) : (
-          <FlatList
-            data={meals}
-            keyExtractor={(_, idx) => idx.toString()}
-            renderItem={({ item }) => (
-              <View style={styles.mealItem}>
-                <Text style={styles.mealTitle}>{item.name}</Text>
-                <Text style={styles.mealMacros}>
-                  Protein: {item.protein}, Carbs: {item.carbs}, Fat: {item.fat}, Calories: {item.calories}, Servings: {item.servings}
-                </Text>
-              </View>
-            )}
-          />
-        )}
-        <View style={styles.divider} />
-        <Text style={styles.totals}>
-          Totals – Protein: {totals.protein}, Carbs: {totals.carbs}, Fat: {totals.fat}, Calories: {totals.calories}
-        </Text>
-      </ScrollView>
-    </SafeAreaView>
+          {/* Meal List and Totals */}
+          <MealList meals={meals} totals={totals} />
+        </ScrollView>
+      </SafeAreaView>
+    </TamaguiProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: '#fff' },
-  sectionTitle: { fontWeight: 'bold', fontSize: 18, marginTop: 18 },
-  input: { borderWidth: 1, borderColor: '#ddd', padding: 8, marginVertical: 5, borderRadius: 6 },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  status: { color: 'green', marginVertical: 4 },
-  divider: { borderBottomWidth: 1, borderBottomColor: '#eee', marginVertical: 14 },
-  mealItem: { marginVertical: 5, padding: 6, backgroundColor: '#f5f5f5', borderRadius: 6 },
-  mealTitle: { fontWeight: '600' },
-  mealMacros: { fontSize: 12, color: '#333' },
-  totals: { fontWeight: 'bold', fontSize: 16, marginTop: 12 }
+  container: { flex: 1, backgroundColor: '#fff' },
+  sectionTitle: { 
+    fontWeight: 'bold', 
+    fontSize: 20, 
+    marginBottom: 8 
+  },
+  weightDisplay: {
+    fontSize: 24,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: '#2e7d32'
+  },
+  divider: { 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#eee', 
+    marginVertical: 8 
+  },
 });

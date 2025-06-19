@@ -49,26 +49,6 @@ import unicodedata
 def normalize_text(text: str) -> str:
     return unicodedata.normalize('NFKD', text.lower()).encode('ascii', 'ignore').decode('ascii')
 
-def extract_calories(text):
-    # Try to extract kcal directly
-    kcal_match = re.search(r'(\d+(?:[.,]\d+)?)\s?kcal', text, re.IGNORECASE)
-    if kcal_match:
-        return float(kcal_match.group(1).replace(',', '.'))
-
-    # Fallback: try to extract kJ and convert to kcal
-    kj_match = re.search(r'(\d+(?:[.,]\d+)?)\s?kJ', text, re.IGNORECASE)
-    if kj_match:
-        kj_value = float(kj_match.group(1).replace(',', '.'))
-        return round(kj_value / 4.184, 2)
-
-    # Final fallback if labeled just as "calories"
-    generic = re.search(r'calories[^0-9]*([\d.]+)', text, re.IGNORECASE)
-    if generic:
-        return float(generic.group(1))
-
-    return 0
-
-
 def parse_nutrition_text(text: str) -> MealRequest:
     text = normalize_text(text)
 
@@ -78,14 +58,13 @@ def parse_nutrition_text(text: str) -> MealRequest:
         return float(match.group(2)) if match else 0
 
     return MealRequest(
-    name="Scanned Label",
-    protein_per_serving=extract("protein"),
-    carbs_per_serving=extract("carbohydrate|carbohydrates|total carbs?"),
-    fat_per_serving=extract("total fat"),
-    calories_per_serving=extract_calories(text),
-    servings=1
-)
-
+        name="Scanned Label",
+        protein_per_serving=extract(["protein", "proteinas", "proteines"]),
+        carbs_per_serving=extract(["carbohydrate", "carbohidratos", "glucides"]),
+        fat_per_serving=extract(["total fat", "grasas", "lipides"]),
+        calories_per_serving=extract(["calories", "energia", "calorias"]),
+        servings=1
+    )
 
 
 # ---------- Routes ----------

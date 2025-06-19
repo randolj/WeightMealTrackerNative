@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, Text, StyleSheet, ScrollView, View } from 'react-native';
+import { SafeAreaView, Text, StyleSheet, ScrollView, View, TouchableOpacity } from 'react-native';
 import axios from 'axios';
 import { TamaguiProvider, YStack } from 'tamagui';
 import config from './tamagui.config';
 import { WeightEntry } from './src/components/WeightEntry';
 import { MealEntry } from './src/components/MealEntry';
 import { MealList } from './src/components/MealList';
+import { NutritionLabelUpload } from './src/components/NutritionLabelUpload';
 import { MealEntry as MealEntryType, MealResponse, WeightEntry as WeightEntryType, DailyTotals } from './src/types';
 
 const BASE_URL = 'http://192.168.1.201:8080';
@@ -20,6 +21,7 @@ export default function App() {
     fat: 0,
     calories: 0,
   });
+  const [entryMode, setEntryMode] = useState<'manual' | 'scan'>('manual');
 
   useEffect(() => {
     checkTodayWeight();
@@ -57,8 +59,23 @@ export default function App() {
   };
 
   const handleWeightSubmit = async (weight: number) => {
-    await axios.post(`${BASE_URL}/weight`, { weight });
-    setTodayWeight(weight);
+    try {
+      console.log('Submitting weight:', weight, 'to URL:', `${BASE_URL}/weight`);
+      const response = await axios.post(`${BASE_URL}/weight`, { weight });
+      console.log('Weight submission response:', response.data);
+      setTodayWeight(weight);
+    } catch (error: any) {
+      console.error('Weight submission error:', error);
+      if (error.response) {
+        console.error('Error response:', error.response.data);
+        console.error('Error status:', error.response.status);
+      } else if (error.request) {
+        console.error('Network error - no response received');
+      } else {
+        console.error('Error setting up request:', error.message);
+      }
+      throw error; // Re-throw to let the component handle it
+    }
   };
 
   const handleMealSubmit = async (meal: MealEntryType) => {
@@ -99,8 +116,50 @@ export default function App() {
 
           <View style={styles.divider} />
 
-          {/* Meal Entry Form */}
-          <MealEntry onSubmit={handleMealSubmit} />
+          {/* Meal Entry Section */}
+          <YStack space="$3" padding="$4" backgroundColor="$background">
+            <Text style={styles.sectionTitle}>Add Meal</Text>
+            
+            {/* Entry Mode Toggle */}
+            <View style={styles.toggleContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.toggleButton,
+                  entryMode === 'manual' && styles.toggleButtonActive
+                ]}
+                onPress={() => setEntryMode('manual')}
+              >
+                <Text style={[
+                  styles.toggleButtonText,
+                  entryMode === 'manual' && styles.toggleButtonTextActive
+                ]}>
+                  Manual Entry
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.toggleButton,
+                  entryMode === 'scan' && styles.toggleButtonActive
+                ]}
+                onPress={() => setEntryMode('scan')}
+              >
+                <Text style={[
+                  styles.toggleButtonText,
+                  entryMode === 'scan' && styles.toggleButtonTextActive
+                ]}>
+                  Scan Label
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Conditional Component Rendering */}
+            {entryMode === 'manual' ? (
+              <MealEntry onSubmit={handleMealSubmit} />
+            ) : (
+              <NutritionLabelUpload onSubmit={handleMealSubmit} baseUrl={BASE_URL} />
+            )}
+          </YStack>
 
           <View style={styles.divider} />
 
@@ -129,5 +188,31 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#eee', 
     marginVertical: 8 
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    padding: 4,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderRadius: 6,
+    backgroundColor: 'transparent',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#2e7d32',
+  },
+  toggleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  toggleButtonTextActive: {
+    color: 'white',
   },
 });
